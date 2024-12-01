@@ -7,6 +7,8 @@ import urllib3
 import ssl
 from PIL import Image, ImageOps, ImageSequence
 import numpy as np
+import subprocess
+from PIL import Image, ImageSequence, ImageOps
 
 class URL2IMG:
     def __init__(self):
@@ -29,60 +31,60 @@ class URL2IMG:
     FUNCTION = "url_to_img"
     CATEGORY = "大模型派对（llm_party）/转换器（converter）"
 
+
     def url_to_img(self, url, file_name=None, is_enable=True):
         if not is_enable:
             return (self.img_path, self.img_data, "Function is disabled")
         if url is None or "http" not in url:
             return (None, None, "URL is None")
 
-        context = ssl.create_default_context()
-        context.set_ciphers('DEFAULT@SECLEVEL=1')
-        http = urllib3.PoolManager(ssl_context=context)
+        # 使用 aria2c 进行多线程下载
+        try:
+            # 构建img_temp目录路径
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            img_temp_dir = os.path.join(current_dir, 'img_temp')
+            os.makedirs(img_temp_dir, exist_ok=True)
 
-        response = http.request('GET', url)
-        if response.status >= 300:
-            return (None, None, "Failed to get data from URL")
+            # 时间戳
+            timestamp = int(time.time())
+            if file_name is None:
+                img_path = os.path.join(img_temp_dir, f'image-{timestamp}.tmp')
+            else:
+                img_path = os.path.join(img_temp_dir, f'{file_name}-{timestamp}.tmp')
 
-        first_bytes = response.data[:8]
-        if first_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
-            ext = 'PNG'
-        elif first_bytes.startswith(b'\xff\xd8'):
-            ext = 'JPG'
-        else:
-            return (None, None, "Unknown image extension based on base64")
-        # 当前脚本目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # 构建img_temp目录路径
-        img_temp_dir = os.path.join(current_dir, 'img_temp')
-        # 如果img_temp目录不存在，则创建
-        os.makedirs(img_temp_dir, exist_ok=True)
-        # 时间戳
-        timestamp = int(time.time())
-        if file_name == None:
-            img_path = os.path.join(img_temp_dir,f'image-{timestamp}.{ext}')
-        else:
-            img_path = os.path.join(img_temp_dir,f'{file_name}-{timestamp}.{ext}')
-        with open(img_path, 'wb') as f:
-            f.write(response.data)
+            cmd = [
+                "aria2c", "-o", os.path.basename(img_path), "-x","16", "-s","16", url,"-d", img_temp_dir
+            ]
+            subprocess.run(cmd, check=True)
 
-        img = Image.open(img_path)
-        img_out = []
-        for frame in ImageSequence.Iterator(img):
-            frame = ImageOps.exif_transpose(frame)
-            if frame.mode == "I":
-                frame = frame.point(lambda i: i * (1 / 256)).convert("L")
-            image = frame.convert("RGB")
-            image = np.array(image).astype(np.float32) / 255.0
-            image = torch.from_numpy(image).unsqueeze(0)
-            img_out.append(image)
-        img_out = img_out[0]
-        self.img_path = img_path
-        self.img_data = img_out
+        except subprocess.CalledProcessError as e:
+            return (None, None, f"Failed to download image: {str(e)}")
 
-        return (img_path, img_out, f"Image file saved as {img_path}")
+        # 检查图片格式并打开
+        try:
+            img = Image.open(img_path)
+            img_out = []
+            for frame in ImageSequence.Iterator(img):
+                frame = ImageOps.exif_transpose(frame)
+                if frame.mode == "I":
+                    frame = frame.point(lambda i: i * (1 / 256)).convert("L")
+                image = frame.convert("RGB")
+                image = np.array(image).astype(np.float32) / 255.0
+                image = torch.from_numpy(image).unsqueeze(0)
+                img_out.append(image)
+            img_out = img_out[0]
+            self.img_path = img_path
+            self.img_data = img_out
+
+            return (img_path, img_out, f"Image file saved as {img_path}")
+
+        except Exception as e:
+            return (None, None, f"Failed to process image: {str(e)}")
+
 
     @classmethod
     def IS_CHANGED():
+        current_time=time.time()
         return str(current_time) 
 
 NODE_CLASS_MAPPINGS = {
