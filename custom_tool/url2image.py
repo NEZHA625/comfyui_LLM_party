@@ -78,7 +78,12 @@ class URL2IMG:
         img_out = img_out[0]
         self.img_path = img_path
         self.img_data = img_out
+
         return (img_path, img_out, f"Image file saved as {img_path}")
+
+    @classmethod
+    def IS_CHANGED():
+        return str(current_time) 
 
 NODE_CLASS_MAPPINGS = {
     "URL2IMG": URL2IMG,
