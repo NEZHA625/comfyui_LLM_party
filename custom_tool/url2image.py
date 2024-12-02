@@ -83,7 +83,7 @@ class URL2IMG:
 
 
     @classmethod
-    def IS_CHANGED():
+    def IS_CHANGED(cls,file_name=None,url=None,is_enable=True):
         current_time=time.time()
         return str(current_time) 
 
